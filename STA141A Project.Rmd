@@ -1,0 +1,492 @@
+---
+title: "STA141A Project Report"
+author: "Victor Lu"
+date: "2023-06-03"
+output: 
+  html_document: 
+    toc: yes
+    toc_float: yes
+    number_sections: yes
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Abstract 
+
+The purpose of the project report is to understand and analyze this data about the neurons responses of mice and create a prediction model. It is important to know how the brain works and reacts to stimuli which is the main purpose from the original project. Procedures that are used in this project are filtering, development of new data structures, and clustering brain areas into groups for analysis in order to build a prediction model.  </span>
+
+*** 
+# Introduction
+
+For this dataset, we have a table where we have a summary of the dataset where columns: mouse, date of experiment, brain area, neurons, trials, and success rate. Description of each columns is listed, mouse: name of the mouse of experiment, date of experiment: gives year-month-day of experimentation, brain area: area of brain that is being checked, neurons: neurons, trails: number of times of experimentation, success rate: probability of success. Other variables listed that are not in the table are feedback type, contrast left and right, time, and spikes(spks). Description of these variables is as follows; feedback type: gives numeric value, 1 for success and -1 for failure, contrast left and right: comparison of left and right part of brain, time: shows time value in relative to spikes, spikes(spks): number of spikes of neurons in visual cortex in relative to time. </span>
+
+```{r include=FALSE, results='hide'}
+suppressWarnings(library(tidyverse))
+suppressWarnings(library(knitr))
+suppressWarnings(library(dplyr))
+library(data.table)
+library(reshape2)
+library(gridExtra)
+```
+
+This is the data set
+```{r include=FALSE, results='hide'}
+setwd("/Users/victorlu/Documents/STA141A/STA141 Project/sessions")
+session=list()
+for(i in 1:18){
+  session[[i]]=readRDS(paste('./session',i,'.rds',sep=''))
+  print(session[[i]]$mouse_name)
+  print(session[[i]]$date_exp)
+  
+}
+```
+
+```{r include=FALSE}
+n.session=length(session)
+
+meta <- tibble(
+  mouse = rep('name',n.session),
+  date_exp =rep('dt',n.session),
+  brain_area = rep(0,n.session),
+  neurons = rep(0,n.session),
+  trials = rep(0,n.session),
+  success_rate = rep(0,n.session)
+)
+
+
+for(i in 1:n.session){
+  tmp = session[[i]];
+  meta[i,1]=tmp$mouse;
+  meta[i,2]=tmp$date_exp;
+  meta[i,3]=length(unique(tmp$brain_area));
+  meta[i,4]=dim(tmp$spks[[1]])[1];
+  meta[i,5]=length(tmp$feedback_type);
+  meta[i,6]=mean(tmp$feedback_type+1)/2;
+  }
+
+names(meta)
+```
+
+```{r}
+# In package knitr
+kable(meta, format = "html", table.attr = "class='table table-striped'",digits=2) 
+```
+
+> This table is important because it gives us a foundation of what the data is saying and seeing simple results from this table would help us with the analysis of the data and what we can do to manipulate it. 
+
+***  
+# Background 
+
+The background for this report is that in this project, the source of data comes from researchers doing a study on the mice where they attempt to understand how vision, decision-making, and actions are correlated to different parts of the brain. The source of the data that the researchers collected was their own experimentation data. The target population is aiming towards true population coefficients that explain the feedback type. The sampling mechanism is rStudio. Description of these variables is as follows; feedback type: gives numeric value, 1 for success and -1 for failure, contrast left and right: comparison of left and right part of brain, time: shows time value in relative to spikes, spikes(spks): number of spikes of neurons in visual cortex in relative to time. The existing research that is relevant to this report is the use of machine learning and using it to read brain responses to stimuli.  </span>
+
+*** 
+
+# Descriptive analysis 
+
+The descriptive analysis provides basic univariate descriptive statistics for relevant variables (mean, standard deviations, missing values, quantiles, etc.), and a few multivariate description of key variables. 
+Readers that are familiar with this topic or statistics gain basic insights of this data set, e.g., being able to generate hypotheses, spot abnormality (or the lack of), propose statistical models, evaluate the plausibility of assumptions. </span>
+
+```{r}
+spk.avg <- c()
+for (i in 1:18) {
+    length.trial = length(session[[i]]$spks)
+  for (k in 1:length.trial) {
+    spk.per = session[[i]]$spks[[k]]
+    num.spk = apply(spk.per, 1, sum)
+    spk.avg = c(spk.avg, mean(num.spk))
+  }
+}
+```
+
+> This code allows us to calculate the average spikes among all of the sessions. This is important becuase it gives us a good idea of that the mean is of the spike data.
+
+```{r}
+coriFeed <- c()
+coriContLeft <- c()
+coriContRight <- c()
+for(i in 1:3){
+  for(j in 1:length(session[[i]]$feedback_type)){
+    coriFeed = c(coriFeed, session[[i]]$feedback_type[[j]])
+    coriContLeft <- c(coriContLeft,session[[i]]$contrast_left[[j]])
+    coriContRight <- c(coriContRight,session[[i]]$contrast_right[[j]])
+  }
+}
+
+forssmannContLeft <- c()
+forssmannContRight <- c()
+forssmannFeed <- c()
+for(i in 4:7) {
+  for(j in 1:length(session[[i]]$feedback_type)){
+    forssmannFeed = c(forssmannFeed,session[[i]]$feedback_type[[j]])
+    forssmannContLeft <- c(forssmannContLeft,session[[i]]$contrast_left[[j]])
+    forssmannContRight <- c(forssmannContRight,session[[i]]$contrast_right[[j]])
+  }
+}
+
+henchContLeft <- c()
+henchContRight <- c()
+henchFeed <- c()
+for(i in 8:11){
+  for(j in 1:length(session[[i]]$feedback_type)){
+    henchFeed = c(henchFeed, session[[i]]$feedback_type[[j]])
+    henchContLeft <- c(henchContLeft,session[[i]]$contrast_left[[j]])
+    henchContRight <- c(henchContRight,session[[i]]$contrast_right[[j]])
+  }
+}
+lederbergContL <- c()
+lederbergContR <- c()
+lederbergFeed <- c()
+for(i in 12:18){
+  for(j in 1:length(session[[i]]$feedback_type)){
+    lederbergFeed = c(lederbergFeed, session[[i]]$feedback_type[[j]])
+    lederbergContL <- c(lederbergContL,session[[i]]$contrast_left[[j]])
+    lederbergContR <- c(lederbergContR,session[[i]]$contrast_right[[j]])
+  }
+}
+
+trialDifferences1 <- length(lederbergFeed)-length(coriFeed)
+coriFeed <- c(coriFeed,rep.int(NA, times = trialDifferences1))
+trialDifferences2 <- length(lederbergFeed)-length(forssmannFeed)
+forssmannFeed <- c(forssmannFeed,rep.int(NA, times = trialDifferences2))
+trialDifferences3 <- length(lederbergFeed)-length(henchFeed)
+henchFeed <- c(henchFeed,rep.int(NA, times = trialDifferences3))
+
+test.mouse.feedback <- data.frame(coriFeed,forssmannFeed,henchFeed,lederbergFeed)
+```
+
+> This allows us to calculate average neuron activity for each mouse while also attempting to use the contrast left/right to see correlation between it and the feedback type.
+
+```{r}
+for(i in 1:4) {
+  namesMouse <- c("Cori", "Forssmann", "Hench", "Lederberg")
+  feedbackResults = table(test.mouse.feedback[[i]])
+  barplot(feedbackResults, main = namesMouse[i], xlab = "Feedback Response", ylab = NULL)
+}
+```
+
+> I belive that these boxplots are useful for implementing a mouses success rate with each of the mouse name. The results is basically saying that so far there are definitely more success than there are failures but you can see that in the y-variables(nmumber of times) for each of the mouse is different which shows that there are differences in the number of trials being implemented which could overall effects the success rate but since the ratios of the success/failure rate is very similar throughout the mice, we can say that the number of trials is not being effected with the success rate. 
+
+```{r include=FALSE}
+spkLength <- c(1:length(spk.avg))
+data.spk.avg <- data.frame(spk.avg, spkLength)
+
+data.spk.avg %>% ggplot(aes(x = spk.avg, y = spkLength)) + geom_point()
+```
+
+
+```{r include=FALSE}
+meta %>% ggplot(aes(x = trials, y = success_rate)) + geom_bar(stat = "identity")
+
+meta %>% ggplot(aes(x = neurons, y = success_rate)) + geom_line()
+```
+
+
+```{r}
+neuroFunc <- function(fb){
+  sessionSum <- list()
+  for (m in 1:18){
+    spks <- session[[m]][["spks"]]
+    feed <- session[[m]][["feedback_type"]]   
+    trial <- 1:length(feed)   
+    feedTrials <- data.frame(feed,trial)   
+    filterFeed <- feedTrials %>% filter(feed %in% c(fb))      
+    dataList <- list()   
+    tempVec <- c()   
+    brainAve <- c(matrix(0,dim(spks[[1]])[1],1))   
+      for (l in 1:dim(spks[[1]])[1]){
+       dataList[[l]] <-  rowSums(spks[[1]])[l] / 40  
+      }       
+  for (j in 2:length(spks)){         
+    for (i in 1:dim(spks[[1]])[1]){ 
+      brainAve <- rowSums(spks[[j]])[i] / 40  
+      dataList[[i]] <- c(dataList[[i]], brainAve) 
+    }   
+  }      
+sessionSum[[m]] <- dataList
+}
+return(sessionSum) } 
+aveTotalNeuro <- neuroFunc(c(1,-1)) 
+```
+
+> This function overall is very important because the function is used to extract the total amount of neurons from each session which is a crucial part to how we are going to cluster brain area in relation to the number of neurons.
+
+```{r}
+brainLocation <- c()
+
+n.session <- length(session)
+for(i in 1:n.session){
+  for(j in 1:length(session[[i]]$brain_area)){
+    brainLocation <- c(brainLocation,session[[i]]$brain_area[[j]])
+  }
+}
+#length(brainLocation)
+```
+
+> This code allowed us to take the data from the session and give us all of the brain areas.
+
+```{r}
+propActiveNeurons <- c()
+for(i in 1:length(aveTotalNeuro)){
+  for(j in 1:length(aveTotalNeuro[[i]])){
+    temp = round(sum(!(aveTotalNeuro[[i]][[j]]==0))/length(aveTotalNeuro[[i]][[j]]),digits = 2)
+    propActiveNeurons = c(propActiveNeurons,temp)
+  }
+}
+```
+
+> This chunk of code then allows us to use the brain areas found in the previous chunk in order to find the proportion of activation rates for each of the neurons.
+
+```{r include=FALSE}
+length(brainLocation)
+length(propActiveNeurons)
+
+brainNames <- unique(brainLocation)
+indexVec <- c(1:length(propActiveNeurons))
+propAreaNeurons <- data.frame(brainLocation, propActiveNeurons,indexVec)
+```
+
+```{r include=FALSE}
+v <- c(1,1,1,1)
+sessionsAll <- c(v*1,v*2,v*3,v*12,v*13,v*14,v*15,v*16,v*17,v*18,c(1:18))
+
+#Testing for getting brain areas for session 1
+testBrainArea <-c()
+numSessionsAll <- length(sessionsAll)
+for(i in 1:length(numSessionsAll)){
+  for(j in 1:length(session[[i]]$brain_area))
+    testBrainArea <-c(testBrainArea,session[[i]]$brain_area[[j]])
+}
+
+#Function designed to compare the specific areas of the brain to where
+comparisonBrain <- function(vector1,vector2){
+  comparison <- vector1 %in% vector2
+  return(any(comparison))
+}
+
+comparisonBrain(testBrainArea,brainNames[1])
+```
+
+```{r}
+#This chunk allows us to show which brain areas are for which sessions
+specficBrain <-length(brainNames)
+brainPerSes <- matrix(, nrow = n.session, ncol =specficBrain)
+colnames(brainPerSes) <- brainNames
+rownames(brainPerSes) <- c(1:18)
+
+for(i in 1:n.session){
+  tempVal <- c(session[[i]]$brain_area)
+  for(j in 1:specficBrain){
+    brainPerSes[i,j] = comparisonBrain(tempVal,brainNames[j])
+  }
+}
+head(brainPerSes)
+```
+
+> This chunk allowed us to take every brain area(which also labels the names to the corresponding brain area) that was used throughout all of the sessions and then categorize it in to a logical variable where it would show if that area of the brain is used in that session.
+
+```{r}
+#This is the variance of the proportions for propAreaNeurons
+neuroVar <- c()
+for(i in 1:length(aveTotalNeuro)){
+  for(j in 1:length(aveTotalNeuro[[i]])){
+    neuroVar = c(neuroVar, var(aveTotalNeuro[[i]][[j]]))
+  }
+}
+
+#This is the average of the proportions propAreaNeurons
+neuroAverage <- c()
+for(i in 1:length(aveTotalNeuro)){
+  for(j in 1:length(aveTotalNeuro[[i]])){
+    neuroAverage <- c(neuroAverage, mean(aveTotalNeuro[[i]][[j]]))
+  }
+}
+```
+
+```{r}
+numNeuron <- c(1:length(brainLocation))
+
+brainNeuroArea <- data.frame(brainLocation, propActiveNeurons, neuroAverage, neuroVar)
+```
+
+> This is the new data frame which merges all of the previous data about the brain locations, proportions of activation neurons, averages of those neurons, and variances.
+
+```{r}
+brainMostFreq <- brainNeuroArea %>% 
+  filter(brainLocation == "ACA" | brainLocation == "root" | brainLocation == "DG" | brainLocation == "MOs" | brainLocation == "Visp" | brainLocation == "CA3") %>%
+  mutate(sumSquareProp = ((propActiveNeurons - mean(propActiveNeurons)) ^ 2))
+  
+```
+
+> This is where we would take the most common brain areas used for testing in all of the sessions: CA1, root, DG, MOs, Visp, and CA3 while creating sum square of the proportions of activation neurons
+
+# Data integration
+
+Part 2 (15 points). Data integration. Using the findings in Part 1, we will propose an approach to combine data across trials by (i) extracting the shared patters across sessions and/or (ii) addressing the differences between sessions. The goal of this part is to enable the borrowing of information across sessions to enhance the prediction performance in Part 3.
+
+**For the course project, if students choose not to conduct any sophisticated methods for data integration, they can choose to focus on utilizing the behavioural information. For instance, they can start by recognizing the different rewarding mechanisms (0-0, equal but non-zero, unequal), the time since the start of the experiment, session IDs for the same mouse, etc.**
+```{r}
+#plot of the 6 brain areas where the brain areas are a cluster
+brainMostFreq %>% ggplot(aes(x = propActiveNeurons, y = neuroVar, color = brainLocation)) +
+  geom_point()+
+  labs(title = "Brain area Clusters of Proportion and Variance of Neurons",
+       x = "Neuron Activation Proportion", y = "Variance of Neurons")
+```
+
+> For this plot, it is a relationship between the neuron activation proportion and variance of neurons. We can see that throughout the brain areas, they are very similar to each other but are stacked up on top of each other which makes it difficult to see the other colors that are underneath it.
+
+```{r}
+#plot the 3 groups
+brainMostFreq %>% ggplot(aes(x = propActiveNeurons, y = sumSquareProp, color = brainLocation)) +
+  geom_point()+
+  labs(title = "Brain area Clusters of Proportion and Sum Squares of Neurons",
+       x = "Neuron Activation Proportion", y = "Sum Squares of Neurons")
+```
+
+> This plot is the a relationship between the neuron activation proportion and sum square of neurons . We can see that throughout the brain areas, we have the same thing where they are stacked on top of each other but in this case, because of the y-axis being the sum square, it seemed to have created a parabola. This plot could possibly be useful to show homogeneity due to all the points lining up.
+
+# Predictive modeling
+
+```{r}
+# This is the gathering data of feedback type and contrast left/right
+feedback <- c()
+contLeft <- c()
+contRight <- c()
+
+w <- c(1,1,1,1)
+sessionsAll <- c(w*1,w*2,w*3,w*12,w*13,w*14,w*15,w*16,w*17,w*8,c(1:18))
+for (s in sessionsAll){
+
+  feedback <- append(feedback, session[[s]][["feedback_type"]] == 1)
+  contLeft <- append(contLeft, session[[s]][["contrast_left"]])
+  contRight <- append(contRight, session[[s]][["contrast_right"]])
+
+}
+contrastTable <- data.frame(feedback, contLeft, contRight)
+
+lengthDiff <- length(propActiveNeurons) - dim(contrastTable)[1]
+feedback <- c(contrastTable$feedback, rep(NA, lengthDiff))
+contLeft <- c(contrastTable$contLeft, rep(NA, lengthDiff))
+contRight <- c(contrastTable$contRight, rep(NA, lengthDiff))
+
+
+lengthDiff2 <- length(propActiveNeurons) - length(neuroAverage)
+neuroAverage <- c(neuroAverage, rep(NA, lengthDiff2))
+neuroVar <- c(neuroVar, rep(NA, lengthDiff2))
+
+lengthDiff3 <- length(propActiveNeurons) - length(spk.avg)
+spk.avg <- c(spk.avg, rep(NA, lengthDiff3))
+
+contrastTable <- data.frame(feedback, contLeft, contRight, propActiveNeurons, neuroAverage, neuroVar, spk.avg)
+```
+
+> This is our training data where we use this to test our prediction model.
+
+```{r}
+#This is a glm table of contrast left/right vs feedback type
+contrastTable.glm <- glm(contrastTable$feedback ~ contrastTable$contLeft + contrastTable$contRight + contrastTable$propActiveNeurons, data = contrastTable, family = "binomial")
+
+summary(contrastTable.glm)
+
+prediction <- predict(contrastTable.glm, contrastTable =  contrastTable, type = "response")
+plot(prediction)
+```
+
+> This is the glm function where we could add our training data into it to train the model.
+
+```{r}
+neuroAveVarDf <- c("propActiveNeurons", "neuroAverage", "neuroVar", "contLeft", "contRight", "feedback", "spk.avg")
+pcaData <-  contrastTable %>%
+            select(all_of(neuroAveVarDf)) %>%
+              na.omit()
+
+pcaTableResult <- prcomp(pcaData, scale = TRUE)
+
+summary(pcaTableResult)
+
+pcaTableResult$rotation
+```
+
+> This chunkc formats the data, perfroms PCA, and makes the summary of PCA for our prediction model
+
+```{r include=FALSE}
+pcaTableResult$x
+```
+
+```{r}
+varExplanation <- pcaTableResult$sdev^2 / sum(pcaTableResult$sdev^2)
+varAll <- cumsum(varExplanation)
+
+plot(pcaTableResult, xlab = "PCA")
+```
+
+> This plot shows the relationship between the PCA and variance which shows to be significant because you can see which components are essentially useful for the prediction model.
+
+
+# Prediction performance on the test sets
+
+```{r}
+setwd("/Users/victorlu/Documents/STA141A/STA141 Project/test")
+test=list()
+for(i in 1:2){
+  test[[i]]=readRDS(paste('./test',i,'.rds',sep=''))
+}
+```
+
+```{r}
+contrastTable.glm <- glm(contrastTable$feed~contrastTable$contLeft+contrastTable$contRight +  contrastTable$propActiveNeurons + contrastTable$spk.avg,
+                    data = contrastTable,
+                    family = "binomial")
+
+estParam <- summary(contrastTable.glm)$coef[,1:2]
+cat("Parameter Estimates and Standard Errors:\n")
+print(estParam)
+
+testingFeed <- data.frame()
+
+prediction <- predict(contrastTable.glm, newdata = data.frame(test[[1]]$feedback_type), type = "response")
+
+binPre <- ifelse(prediction > 0.5,"-1","1")
+
+binPreSample <- sample(binPre, 100)
+
+confuseMatrix <- table(Actual = test[[1]]$feedback_type, Predicted = binPreSample)
+
+print(confuseMatrix)
+
+misclassification <- (1- (sum(diag(confuseMatrix))/(sum(confuseMatrix))))
+
+cat("Misclassification Error:", misclassification, "\n")
+```
+
+> Created a glm for contrast left/right and feeedback type, then obtained estimates and standard error, extracted predictor variables, predicted the feedback using the test data and made a binary confusion matrix. From the miscalculation error, we can see that it is around 76% correct when compared to our training data for contrast left/right, active neuron proportions and average spike.
+
+# Discussion 
+
+
+
+*** 
+# Acknowledgement {-}
+
+Heavy collaboration of ideas and code through the whole project with Satoshi Shinkawa, Ben Weisner, Alexander Lin. The also had the help/use of ChatGPT and lecture/provided notes that was provided for this project. </span>
+
+# Reference {-}
+
+Steinmetz, N.A., Zatka-Haas, P., Carandini, M. et al. Distributed coding of choice, action and engagement across the mouse brain. Nature 576, 266–273 (2019). https://doi.org/10.1038/s41586-019-1787-x
+
+*** 
+# Session info {-}
+
+```{r}
+sessionInfo()
+```
+*** 
+
+# Appendix {-}
+\begin{center} Appendix: R Script \end{center}
+
+```{r, ref.label=knitr::all_labels(),echo=TRUE,eval=FALSE}
+```
+
+# Extra Notes
+
+I tried some plots and such but it didn't show much significance so I didn't include it/deleted it. I was unable to get the prediction model working and when the test data got released, I was unable to incorporate the test data to this project due to having finals the Monday the test data got released.
